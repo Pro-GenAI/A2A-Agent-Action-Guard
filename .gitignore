@@ -1,3 +1,20 @@
+# Custom files
+.venv*
+__pycache__/
+.env
+.pytest_cache/
+.mypy_cache/
+TODO.md
+unused/
+*_cache.json
+*.egg-info
+*.drawio.bkp
+llamacpp_files/
+build/
+dist/
+*.log
+TODO.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
