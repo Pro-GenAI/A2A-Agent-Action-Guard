@@ -6,7 +6,6 @@ __pycache__/
 .mypy_cache/
 TODO.md
 unused/
-*_cache.json
 *.egg-info
 *.drawio.bkp
 llamacpp_files/
@@ -14,6 +13,9 @@ build/
 dist/
 *.log
 TODO.md
+# *_cache.json
+# harmacteval_cache.json
+main-README.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -222,3 +224,5 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+

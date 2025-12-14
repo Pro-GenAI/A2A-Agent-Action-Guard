@@ -2,32 +2,25 @@
 """A2A server entrypoint."""
 
 import os
-from typing import Any, List, Optional
+from typing import Any
 
 from urllib.parse import urlparse
 
 from flask import request
 from langchain_core.tools import tool
 
-
 from python_a2a import (
     A2AServer,
-    skill,
     agent,
     Message,
     MessageRole,
     TextContent,
 )
 from python_a2a.server.http import create_flask_app
-
 # Reference: https://pypi.org/project/python-a2a
 
-from agent_action_guard_a2a.utils.llm_utils import (
-    reset_agent,
-    get_agent_response,
-    agent_tools,
-    model,
-)
+from agent_action_guard_a2a.utils.llm_utils import call_agent, agent_tools, execution_counts, model_key
+
 
 A2A_EVAL_SERVER_URL = os.getenv("A2A_EVAL_SERVER_URL", "").rstrip("/")
 if not A2A_EVAL_SERVER_URL:
@@ -44,22 +37,11 @@ SERVER_HOST = parsed_url.hostname or "0.0.0.0"
     name="Agent", description="Uses tools and answers user queries.", version="1.0.0"
 )
 class CustomAgent(A2AServer):
-
-    @skill(name="Use tool", description="Use the selected tool.", tags=["tool-user"])
-    def use_tool(self, tool_name: str, tool_args: dict) -> str:
-        """Use the selected tool."""
-        print(f"Using tool: {tool_name} with args: {tool_args}")
-        return call_tool(tool_name, **tool_args)
-
     def handle_message(self, message):
-        print("Received message:", message)
         if message.content.type == "text":
             if message.role == MessageRole.USER:
                 # Get agent response for user messages
-                print("Processing user message...")
-                response = get_agent_response(message.content.text)
-                print("Agent response:", response)
-
+                response = call_agent(message.content.text)
                 return Message(
                     content=TextContent(text=response),  # Simply echo the text
                     role=MessageRole.AGENT,
@@ -80,22 +62,6 @@ agent_server = CustomAgent(
     url=A2A_EVAL_SERVER_URL + "/a2a",
 )
 
-execution_counts = {}  # tool_name: count
-
-
-def call_tool(tool_name: str, *args, **kwargs) -> Any:
-    """Wrapper to call a tool and track execution counts."""
-    tool = agent_tools.get(tool_name)
-    if not tool:
-        raise ValueError(f"Tool {tool_name} not found.")
-
-    if tool_name not in execution_counts:
-        execution_counts[tool_name] = 0
-    execution_counts[tool_name] += 1
-
-    print(f"Called {tool_name} with args: {args}, kwargs: {kwargs}")
-    return f"Successfully called tool {tool_name}."
-
 
 app = create_flask_app(agent_server)
 
@@ -105,8 +71,6 @@ def add_tool() -> dict:
     """Endpoint to dynamically add a new tool to the MCP server."""
 
     tool_definition = request.get_json()
-    tool_definition = tool_definition.get("tool_definition", {})
-
     print("Adding tool:", tool_definition)
 
     # Validate the tool
@@ -132,12 +96,10 @@ def add_tool() -> dict:
         }
 
     # Add the tool to the MCP server
-    agent_tools[tool_name] = tool(
-        name_or_callable=lambda *args, **kwargs: call_tool(tool_name, *args, **kwargs),
-        description=tool_description,
-        args_schema=schema,
-    )
-    reset_agent(tools=[agent_tools[tool_name]])
+    agent_tools[tool_name] = {
+        "type": "function",
+        "function": tool_definition,
+    }
 
     return {
         "status": "success",
@@ -158,9 +120,8 @@ def remove_tool() -> dict:
     """Endpoint to dynamically remove a tool from the MCP server."""
 
     tool_definition = request.get_json()
-    tool_definition = tool_definition.get("tool_definition", {})
+    print("Received request to remove tool:", tool_definition)
 
-    # print("Received request to remove tool:", tool_definition)
     tool_name = tool_definition.get("name", "")
     if not tool_name:
         return {
@@ -176,8 +137,13 @@ def remove_tool() -> dict:
     del agent_tools[tool_name]
     if tool_name in execution_counts:
         del execution_counts[tool_name]
-    reset_agent()
     return {"status": "success", "message": f"Tool {tool_name} removed."}
+
+
+@app.get("/model_key")
+def get_model_key() -> dict:
+    """Endpoint to get the current model key."""
+    return {"model_key": model_key}
 
 
 @app.get("/")
